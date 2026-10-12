@@ -1,0 +1,722 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>YouTube Processor — Colab Cell Generator</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#0d1117;color:#e6edf3;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:980px;margin:auto;padding:20px}
+h1{margin:0 0 6px;font-size:24px}
+.sub{color:#8b949e;margin-bottom:20px}
+.card{background:#161b22;border:1px solid #30363d;border-radius:14px;padding:16px;margin:14px 0}
+label{display:block;font-weight:700;margin-bottom:8px}
+input{width:100%;padding:13px 14px;border-radius:10px;border:1px solid #30363d;background:#0d1117;color:#fff;font-size:15px}
+button{border:0;border-radius:9px;padding:10px 14px;font-weight:700;cursor:pointer}
+.primary{margin-top:12px;width:100%;background:#238636;color:white;font-size:15px}
+.copy{background:#21262d;color:#e6edf3;border:1px solid #30363d}
+.copyall{background:#1f6feb;color:#fff;width:100%;margin-top:8px}
+pre{white-space:pre-wrap;overflow:auto;background:#0d1117;border:1px solid #30363d;border-radius:10px;padding:14px;font-size:12px;line-height:1.5;max-height:430px}
+.head{display:flex;justify-content:space-between;gap:10px;align-items:center}
+.status{color:#3fb950;font-size:13px;margin-top:8px}
+.warn{color:#d29922;font-size:13px}
+.small{font-size:12px;color:#8b949e}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎬 YouTube Processor</h1>
+  <div class="sub">Generate 4 Colab cells dari satu URL YouTube. Token Telegram tetap di Colab Secrets.</div>
+
+  <div class="card">
+    <label for="url">YouTube URL</label>
+    <input id="url" type="url" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off">
+    <button class="primary" onclick="generate()">⚡ Generate Cells</button>
+    <div id="status" class="status"></div>
+    <div class="small" style="margin-top:10px">
+      URL hanya dipakai oleh JavaScript di halaman ini untuk mengisi Cell 2.
+    </div>
+  </div>
+
+  <div id="output" style="display:none">
+    <div class="card">
+      <button class="copyall" onclick="copyAll()">📋 COPY ALL CELLS</button>
+    </div>
+    <div id="cells"></div>
+  </div>
+</div>
+
+<script>
+let generated = [];
+
+const cell1 = String.raw`# ============================================================
+# CELL 1 — INIT ALL
+# ============================================================
+
+import os
+import sys
+import subprocess
+import shutil
+import requests
+from pathlib import Path
+
+print("🚀 YOUTUBE PROCESSOR — INIT")
+print("=" * 45)
+
+subprocess.run(
+    [sys.executable, "-m", "pip", "install", "-q", "-U",
+     "yt-dlp", "requests"],
+    check=True
+)
+
+for tool in ["ffmpeg", "ffprobe"]:
+    if not shutil.which(tool):
+        raise RuntimeError(f"❌ {tool} tidak ditemukan")
+
+print("✅ FFmpeg")
+print("✅ FFprobe")
+
+encoders = subprocess.check_output(
+    ["ffmpeg", "-hide_banner", "-encoders"],
+    stderr=subprocess.STDOUT,
+    text=True
+)
+
+if "libx265" not in encoders:
+    raise RuntimeError("❌ libx265 tidak tersedia")
+
+print("✅ libx265")
+
+from google.colab import userdata
+
+TELEGRAM_TOKEN = userdata.get("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = userdata.get("TELEGRAM_CHAT_ID")
+
+if not TELEGRAM_TOKEN:
+    raise RuntimeError("❌ TELEGRAM_TOKEN tidak ditemukan")
+
+if not TELEGRAM_CHAT_ID:
+    raise RuntimeError("❌ TELEGRAM_CHAT_ID tidak ditemukan")
+
+print("✅ Telegram Secrets")
+
+r = requests.get(
+    f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getMe",
+    timeout=15
+)
+if not r.ok:
+    raise RuntimeError(f"❌ Telegram API error: {r.text}")
+
+bot = r.json()["result"]
+print(f"🤖 Bot: @{bot['username']}")
+
+requests.post(
+    f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+    data={
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": "🟢 YouTube Processor — Colab connected"
+    },
+    timeout=15
+).raise_for_status()
+
+print("📨 Telegram test OK")
+
+from google.colab import drive
+drive.mount("/content/drive")
+
+DRIVE_ROOT = Path("/content/drive/MyDrive/YouTube_download")
+DRIVE_ROOT.mkdir(parents=True, exist_ok=True)
+
+LOCAL_ROOT = Path("/content/youtube_processor")
+LOCAL_ROOT.mkdir(parents=True, exist_ok=True)
+
+print(f"☁️ Drive: {DRIVE_ROOT}")
+print(f"💻 Local: {LOCAL_ROOT}")
+print("=" * 45)
+print("🟢 INIT COMPLETE")`;
+
+function makeCell2(url){
+return String.raw`# ============================================================
+# CELL 2 — DOWNLOAD YOUTUBE
+# ============================================================
+
+import subprocess
+import json
+import re
+import shutil
+from pathlib import Path
+
+URL = ${JSON.stringify(url)}
+
+print("⬇️ DOWNLOAD YOUTUBE")
+print("=" * 45)
+
+info = json.loads(subprocess.check_output(
+    ["yt-dlp", "--dump-single-json", "--no-warnings", URL],
+    text=True
+))
+
+title = info.get("title", "YouTube Video")
+safe_title = re.sub(r'[\\/:*?"<>|]', "", title).strip()
+safe_title = safe_title[:180]
+
+PROJECT_DIR = DRIVE_ROOT / safe_title
+LOCAL_DIR = LOCAL_ROOT / safe_title
+
+PROJECT_DIR.mkdir(parents=True, exist_ok=True)
+LOCAL_DIR.mkdir(parents=True, exist_ok=True)
+
+print(f"🎬 {title}")
+print(f"📁 Project: {safe_title}")
+
+OUTPUT_TEMPLATE = str(LOCAL_DIR / f"{safe_title}.%(ext)s")
+
+cmd = [
+    "yt-dlp",
+    "-f", "bv*[height<=2160]+ba/b[height<=2160]",
+    "--merge-output-format", "mkv",
+    "--retries", "10",
+    "--fragment-retries", "10",
+    "-N", "8",
+    "-o", OUTPUT_TEMPLATE,
+    URL
+]
+
+result = subprocess.run(cmd)
+if result.returncode != 0:
+    raise RuntimeError("❌ Download gagal")
+
+files = [
+    f for f in LOCAL_DIR.iterdir()
+    if f.is_file() and f.suffix.lower() in [".mp4",".mkv",".webm"]
+]
+if not files:
+    raise RuntimeError("❌ File hasil download tidak ditemukan")
+
+source = max(files, key=lambda x: x.stat().st_mtime)
+
+probe = json.loads(subprocess.check_output([
+    "ffprobe","-v","error","-print_format","json",
+    "-show_format","-show_streams",str(source)
+], text=True))
+
+video = next(s for s in probe["streams"] if s["codec_type"]=="video")
+duration = float(probe["format"].get("duration",0))
+size = source.stat().st_size
+width = video.get("width",0)
+height = video.get("height",0)
+codec = video.get("codec_name","unknown")
+profile = video.get("profile","unknown")
+fps_raw = video.get("r_frame_rate","0/1")
+num, den = fps_raw.split("/")
+fps = float(num)/float(den) if float(den) else 0
+
+bitrate = video.get("bit_rate")
+bitrate_mbps = (
+    float(bitrate)/1_000_000 if bitrate else
+    (size*8/duration/1_000_000 if duration > 0 else 0)
+)
+
+transfer = (video.get("color_transfer") or "").lower()
+primaries = (video.get("color_primaries") or "").lower()
+
+if "arib-std-b67" in transfer:
+    dynamic_range = "HLG"
+elif "smpte2084" in transfer:
+    dynamic_range = "PQ / HDR"
+elif "bt2020" in primaries:
+    dynamic_range = "HDR"
+else:
+    dynamic_range = "SDR"
+
+def fmt_size(n):
+    for unit in ["B","KB","MB","GB","TB"]:
+        if n < 1024:
+            return f"{n:.2f} {unit}"
+        n /= 1024
+    return f"{n:.2f} PB"
+
+def fmt_duration(sec):
+    sec = int(sec)
+    h = sec//3600
+    m = (sec%3600)//60
+    s = sec%60
+    return f"{h:02d}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
+
+drive_source = PROJECT_DIR / source.name
+shutil.copy2(source, drive_source)
+
+report = f"""✅ SOURCE READY
+
+🎬 Nama:
+{source.name}
+
+💾 Size: {fmt_size(size)}
+📐 Resolution: {width}×{height}
+🚀 Bitrate: {bitrate_mbps:.2f} Mbps
+🎞 FPS: {fps:.2f}
+🎥 Codec: {codec} {profile}
+⏱ Duration: {fmt_duration(duration)}
+🌈 Dynamic Range: {dynamic_range}
+
+☁️ Saved to Google Drive
+"""
+
+print(report)
+
+requests.post(
+    f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+    data={"chat_id": TELEGRAM_CHAT_ID, "text": report},
+    timeout=20
+).raise_for_status()
+
+print("🟢 DOWNLOAD COMPLETE")`;
+}
+
+const cell3 = String.raw`# ============================================================
+# CELL 3 — TRIM ~30 DETIK
+# ============================================================
+
+import subprocess
+import shutil
+import json
+from pathlib import Path
+
+print("✂️ TRIM PROCESS")
+print("=" * 45)
+
+source_files = [
+    f for f in PROJECT_DIR.iterdir()
+    if f.is_file() and f.suffix.lower() in [".mp4",".mkv",".webm"]
+]
+if not source_files:
+    raise RuntimeError("❌ Source video tidak ditemukan di Drive")
+
+source = max(source_files, key=lambda x: x.stat().st_mtime)
+local_source = LOCAL_DIR / source.name
+
+print(f"🎬 Source: {source.name}")
+shutil.copy2(source, local_source)
+
+duration = float(subprocess.check_output([
+    "ffprobe","-v","error",
+    "-show_entries","format=duration",
+    "-of","default=noprint_wrappers=1:nokey=1",
+    str(local_source)
+], text=True).strip())
+
+print(f"⏱ Duration: {duration:.2f} sec")
+
+TRIM_DIR = PROJECT_DIR / "trim"
+TRIM_LOCAL = LOCAL_DIR / "trim"
+TRIM_DIR.mkdir(parents=True, exist_ok=True)
+TRIM_LOCAL.mkdir(parents=True, exist_ok=True)
+
+TARGET = 30.0
+total_clips = int((duration + TARGET - 0.001)//TARGET)
+if duration > total_clips * TARGET:
+    total_clips += 1
+
+created = skipped = failed = 0
+
+for i in range(total_clips):
+    clip_no = i + 1
+    start = i * TARGET
+    remaining = duration - start
+    if remaining <= 0:
+        break
+
+    clip_duration = min(TARGET, remaining)
+    output_local = TRIM_LOCAL / f"clip_{clip_no:02d}.mkv"
+    output_drive = TRIM_DIR / output_local.name
+
+    if output_drive.exists() and output_drive.stat().st_size > 0:
+        print(f"⏭️ [{clip_no:02d}/{total_clips}] sudah ada")
+        skipped += 1
+        continue
+
+    print(f"✂️ [{clip_no:02d}/{total_clips}] {start:.2f}s → {start+clip_duration:.2f}s")
+
+    cmd = [
+        "ffmpeg","-hide_banner","-loglevel","error",
+        "-ss",f"{start:.3f}","-i",str(local_source),
+        "-t",f"{clip_duration:.3f}",
+        "-map","0:v?","-map","0:a?",
+        "-c","copy","-avoid_negative_ts","make_zero",
+        "-y",str(output_local)
+    ]
+
+    result = subprocess.run(cmd)
+
+    if result.returncode != 0 or not output_local.exists():
+        print("   ❌ FAILED")
+        failed += 1
+        continue
+
+    try:
+        check = json.loads(subprocess.check_output([
+            "ffprobe","-v","error",
+            "-show_entries","format=duration,size",
+            "-of","json",str(output_local)
+        ], text=True))
+
+        clip_duration_real = float(check["format"]["duration"])
+        clip_size = int(check["format"]["size"])
+
+        if clip_duration_real <= 0 or clip_size <= 0:
+            raise ValueError("invalid output")
+    except Exception:
+        print("   ❌ Validation failed")
+        output_local.unlink(missing_ok=True)
+        failed += 1
+        continue
+
+    shutil.copy2(output_local, output_drive)
+    print(f"   ✅ {clip_duration_real:.2f}s | {clip_size/1024/1024:.2f} MB")
+    created += 1
+
+final_clips = sorted(
+    list(TRIM_DIR.glob("clip_*.mkv")) +
+    list(TRIM_DIR.glob("clip_*.mp4")) +
+    list(TRIM_DIR.glob("clip_*.webm"))
+)
+
+report = f"""✂️ TRIM COMPLETE
+
+🎬 Source:
+{source.name}
+
+⏱ Duration:
+{duration:.2f} sec
+
+📦 Clips:
+{len(final_clips)}
+
+🎯 Target:
+~30 sec / clip
+
+✅ Created: {created}
+⏭️ Skipped: {skipped}
+❌ Failed: {failed}
+
+☁️ Saved:
+YouTube_download/{PROJECT_DIR.name}/trim/
+"""
+
+print(report)
+
+requests.post(
+    f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+    data={"chat_id": TELEGRAM_CHAT_ID, "text": report},
+    timeout=20
+).raise_for_status()
+
+print("🟢 CELL 3 COMPLETE")`;
+
+const cell4 = String.raw`# ============================================================
+# CELL 4 — RENDER HEVC + RESUME + TELEGRAM
+# ============================================================
+
+import subprocess
+import shutil
+import json
+import time
+from pathlib import Path
+
+print("🎬 RENDER PROCESS")
+print("=" * 50)
+
+CRF = 18
+PRESET = "medium"
+
+RENDER_DIR = PROJECT_DIR / "render"
+RENDER_LOCAL = LOCAL_DIR / "render"
+RENDER_DIR.mkdir(parents=True, exist_ok=True)
+RENDER_LOCAL.mkdir(parents=True, exist_ok=True)
+
+clips = sorted(
+    list(TRIM_DIR.glob("clip_*.mkv")) +
+    list(TRIM_DIR.glob("clip_*.mp4")) +
+    list(TRIM_DIR.glob("clip_*.webm"))
+)
+
+if not clips:
+    raise RuntimeError("❌ Tidak ada clip di folder trim")
+
+total = len(clips)
+
+def probe_video(path):
+    data = json.loads(subprocess.check_output([
+        "ffprobe","-v","error","-print_format","json",
+        "-show_format","-show_streams",str(path)
+    ], text=True))
+
+    video = next(s for s in data["streams"] if s["codec_type"]=="video")
+    duration = float(data["format"].get("duration",0))
+    size = Path(path).stat().st_size
+    bitrate = video.get("bit_rate")
+
+    bitrate_mbps = (
+        float(bitrate)/1_000_000 if bitrate else
+        (size*8/duration/1_000_000 if duration > 0 else 0)
+    )
+
+    try:
+        n,d = video.get("r_frame_rate","0/1").split("/")
+        fps = float(n)/float(d)
+    except:
+        fps = 0
+
+    transfer = (video.get("color_transfer") or "").lower()
+    primaries = (video.get("color_primaries") or "").lower()
+
+    if "arib-std-b67" in transfer:
+        dr = "HLG"
+    elif "smpte2084" in transfer:
+        dr = "PQ / HDR"
+    elif "bt2020" in primaries:
+        dr = "HDR"
+    else:
+        dr = "SDR"
+
+    return {
+        "width": video.get("width",0),
+        "height": video.get("height",0),
+        "codec": video.get("codec_name","unknown"),
+        "fps": fps,
+        "duration": duration,
+        "size": size,
+        "bitrate": bitrate_mbps,
+        "dynamic_range": dr
+    }
+
+def fmt_size(size):
+    for unit in ["B","KB","MB","GB","TB"]:
+        if size < 1024:
+            return f"{size:.2f} {unit}"
+        size /= 1024
+    return f"{size:.2f} PB"
+
+def send_telegram(text):
+    requests.post(
+        f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+        data={"chat_id": TELEGRAM_CHAT_ID, "text": text},
+        timeout=20
+    ).raise_for_status()
+
+success = failed = skipped = 0
+overall_start = time.time()
+
+for index, clip in enumerate(clips, 1):
+    number = f"{index:02d}"
+    output_name = f"clip_{number}_hevc.mp4"
+    drive_output = RENDER_DIR / output_name
+    local_output = RENDER_LOCAL / output_name
+
+    if drive_output.exists() and drive_output.stat().st_size > 0:
+        try:
+            x = probe_video(drive_output)
+            if x["width"] == 1080 and x["height"] == 1920 and x["codec"] == "hevc":
+                print(f"⏭️ [{number}/{total}] {output_name} sudah selesai")
+                skipped += 1
+                continue
+        except:
+            pass
+        drive_output.unlink(missing_ok=True)
+
+    print()
+    print("=" * 50)
+    print(f"🎬 [{number}/{total}] {clip.name}")
+    print("=" * 50)
+
+    local_clip = LOCAL_DIR / clip.name
+    shutil.copy2(clip, local_clip)
+
+    render_start = time.time()
+
+    cmd = [
+        "ffmpeg","-hide_banner","-loglevel","error",
+        "-i",str(local_clip),
+        "-map","0:v:0","-map","0:a?",
+        "-vf",
+        "transpose=1,"
+        "scale=1080:1920:force_original_aspect_ratio=decrease,"
+        "pad=1080:1920:(ow-iw)/2:(oh-ih)/2,"
+        "unsharp=5:5:1.0:5:5:0.0",
+        "-c:v","libx265",
+        "-preset",PRESET,
+        "-crf",str(CRF),
+        "-tag:v","hvc1",
+        "-c:a","aac",
+        "-b:a","192k",
+        "-movflags","+faststart",
+        "-y",str(local_output)
+    ]
+
+    result = subprocess.run(cmd)
+    render_time = time.time() - render_start
+
+    if result.returncode != 0 or not local_output.exists():
+        print("❌ RENDER FAILED")
+        failed += 1
+        local_output.unlink(missing_ok=True)
+        continue
+
+    try:
+        info = probe_video(local_output)
+        if (
+            info["width"] != 1080 or
+            info["height"] != 1920 or
+            info["codec"] != "hevc" or
+            info["duration"] <= 0
+        ):
+            raise ValueError("Output validation failed")
+    except Exception as e:
+        print(f"❌ VALIDATION FAILED: {e}")
+        failed += 1
+        local_output.unlink(missing_ok=True)
+        continue
+
+    shutil.copy2(local_output, drive_output)
+    success += 1
+
+    report = f"""✅ RENDER [{number}/{total}]
+
+🎬 {clip.name}
+
+📐 Resolution:
+{info["width"]}×{info["height"]}
+
+🚀 Video Bitrate:
+{info["bitrate"]:.2f} Mbps
+
+🎞 FPS:
+{info["fps"]:.2f}
+
+🎥 Codec:
+HEVC / H.265
+
+⏱ Duration:
+{info["duration"]:.2f} sec
+
+🌈 Dynamic Range:
+{info["dynamic_range"]}
+
+⚙️ CRF: {CRF}
+⚡ Preset: {PRESET}
+🔄 Rotate: 90° Right
+✨ Sharpen: Medium
+
+💾 Size:
+{fmt_size(info["size"])}
+
+⏱ Render Time:
+{render_time/60:.1f} min
+
+☁️ Saved to Drive
+"""
+
+    print(report)
+
+    try:
+        send_telegram(report)
+        print("📨 Telegram sent")
+    except Exception as e:
+        print(f"⚠️ Telegram failed: {e}")
+
+total_time = time.time() - overall_start
+
+final_report = f"""🎉 RENDER COMPLETE
+
+🎬 Source:
+{PROJECT_DIR.name}
+
+🎞 Render:
+{success + skipped}/{total} SUCCESS
+
+🆕 Rendered: {success}
+⏭️ Already Done: {skipped}
+❌ Failed: {failed}
+
+⚙️ HEVC CRF{CRF}
+⚡ Preset: {PRESET}
+🔄 Rotate Right 90°
+✨ Medium Sharpen
+📐 1080×1920 FHD
+
+☁️ Output:
+YouTube_download/{PROJECT_DIR.name}/render/
+
+⏱ Total Processing:
+{total_time/60:.1f} min
+"""
+
+print(final_report)
+
+try:
+    send_telegram(final_report)
+except Exception as e:
+    print(f"⚠️ Final Telegram failed: {e}")
+
+print("🟢 CELL 4 COMPLETE")`;
+
+function esc(s){
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+function generate(){
+  const url = document.getElementById("url").value.trim();
+  const status = document.getElementById("status");
+  if(!url || !/(youtube\.com|youtu\.be)/i.test(url)){
+    status.textContent = "❌ Masukkan URL YouTube yang valid.";
+    status.className = "warn";
+    return;
+  }
+
+  generated = [cell1, makeCell2(url), cell3, cell4];
+
+  const names = [
+    ["CELL 1 — INIT ALL", cell1],
+    ["CELL 2 — DOWNLOAD + VALIDATE + DRIVE", generated[1]],
+    ["CELL 3 — TRIM ~30 DETIK", cell3],
+    ["CELL 4 — RENDER HEVC + RESUME", cell4]
+  ];
+
+  document.getElementById("cells").innerHTML = names.map((x,i)=>`
+    <div class="card">
+      <div class="head">
+        <strong>${x[0]}</strong>
+        <button class="copy" onclick="copyCell(${i},this)">COPY</button>
+      </div>
+      <pre id="code${i}">${esc(x[1])}</pre>
+    </div>
+  `).join("");
+
+  document.getElementById("output").style.display = "block";
+  status.textContent = "🟢 4 cell berhasil dibuat. Tinggal copy ke Colab.";
+  status.className = "status";
+}
+
+async function copyText(text, button){
+  await navigator.clipboard.writeText(text);
+  const old = button.textContent;
+  button.textContent = "✅ COPIED";
+  setTimeout(()=>button.textContent=old,1200);
+}
+
+function copyCell(i,b){
+  copyText(generated[i],b);
+}
+
+function copyAll(){
+  const all = generated.map((x,i)=>`# ================================
+# CELL ${i+1}
+# ================================
+
+${x}`).join("\n\n");
+  copyText(all, document.querySelector(".copyall"));
+}
+</script>
+</body>
+</html>
